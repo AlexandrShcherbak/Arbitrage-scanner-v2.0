@@ -1,0 +1,18 @@
+{
+  "scanner": {
+    "use_coincap_universe": true,
+    "coincap_limit": 25,
+    "symbols": ["BTC", "ETH", "SOL", "XRP", "TON", "USDT"],
+    "quote_asset": "USDT",
+    "cex_exchanges": ["mexc", "bybit", "bitget", "binance", "okx"],
+    "enable_dex": true,
+    "enable_p2p_rub": true,
+    "p2p_symbols": ["USDT", "BTC", "ETH"],
+    "taker_fee_percent": 0.1,
+    "slippage_percent": 0.2,
+    "min_profit_percent": 0.4,
+    "interval_sec": 120,
+    "print_top": 20,
+    "output": "data/trades/opportunities_latest.json"
+  }
+}
