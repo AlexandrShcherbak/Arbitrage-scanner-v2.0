@@ -22,6 +22,12 @@
     "taker_fee_percent": 0.1,
     "slippage_percent": 0.2,
     "min_profit_percent": 0.4,
+    "pretrade_min_quote_volume": 50000,
+    "pretrade_max_spread_percent": 25,
+    "blocked_sources": [],
+    "max_signals_per_cycle": 10,
+    "max_daily_loss_usdt": 100,
+    "risk_state_path": "data/trades/risk_state.json",
     "interval_sec": 120,
     "print_top": 20,
     "output": "data/trades/opportunities_latest.json"
