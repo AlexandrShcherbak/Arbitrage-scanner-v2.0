@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+logs.json
+
+# Data files
+data/opportunities/*.csv
+data/opportunities/*.json
+data/history/*.json
+data/trades/*.json
+backups/*.tar.gz
+
+# API keys
+*.key
+*.pem
+secret*
+config_private.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+temp/
+tmp/
+*.tmp
+*.temp
+
+# Test
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Backups
+*.bak
+*.backup

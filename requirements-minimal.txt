@@ -1,0 +1,9 @@
+requests==2.31.0
+pandas==2.1.4
+numpy==1.26.2
+python-dotenv==1.0.0
+ccxt==4.1.59
+loguru==0.7.2
+colorama==0.4.6
+python-dateutil==2.8.2
+pytz==2023.3

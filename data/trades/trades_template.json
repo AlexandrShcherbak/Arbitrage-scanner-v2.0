@@ -1,0 +1,10 @@
+{
+  "trades": [],
+  "summary": {
+    "total_trades": 0,
+    "successful_trades": 0,
+    "failed_trades": 0,
+    "total_profit_usdt": 0,
+    "total_volume_usdt": 0
+  }
+}
