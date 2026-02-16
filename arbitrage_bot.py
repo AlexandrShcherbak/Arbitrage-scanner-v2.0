@@ -44,6 +44,13 @@ class Opportunity:
     market_type_sell: str
 
 
+@dataclass
+class Signal:
+    opportunity: Opportunity
+    validation_passed: bool
+    validation_reasons: List[str]
+
+
 class CoinCapUniverseClient:
     URL = "https://api.coincap.io/v2/assets"
 
@@ -314,6 +321,84 @@ class ArbitrageEngine:
         return opportunities
 
 
+class PreTradeValidator:
+    """Валидатор исполнимости сигнала до (бумажной) сделки."""
+
+    def __init__(
+        self,
+        min_quote_volume: float,
+        max_spread_percent: float,
+        blocked_sources: Optional[List[str]] = None,
+    ):
+        self.min_quote_volume = float(min_quote_volume)
+        self.max_spread_percent = float(max_spread_percent)
+        self.blocked_sources = {source.lower() for source in (blocked_sources or [])}
+
+    def validate(self, opportunity: Opportunity, quote_index: Dict[Tuple[str, str], Quote]) -> Tuple[bool, List[str]]:
+        reasons: List[str] = []
+        buy_key = (opportunity.symbol, opportunity.buy_source)
+        sell_key = (opportunity.symbol, opportunity.sell_source)
+        buy_quote = quote_index.get(buy_key)
+        sell_quote = quote_index.get(sell_key)
+
+        if opportunity.buy_source.lower() in self.blocked_sources:
+            reasons.append(f"buy source blocked: {opportunity.buy_source}")
+        if opportunity.sell_source.lower() in self.blocked_sources:
+            reasons.append(f"sell source blocked: {opportunity.sell_source}")
+
+        if buy_quote and buy_quote.volume_quote < self.min_quote_volume:
+            reasons.append("buy quote volume too low")
+        if sell_quote and sell_quote.volume_quote < self.min_quote_volume:
+            reasons.append("sell quote volume too low")
+
+        if opportunity.gross_percent > self.max_spread_percent:
+            reasons.append("spread exceeds sanity threshold")
+
+        return len(reasons) == 0, reasons
+
+
+class RiskManager:
+    """Простой риск-менеджер для фильтрации и лимитов сигналов."""
+
+    def __init__(
+        self,
+        max_signals_per_cycle: int,
+        max_daily_loss_usdt: float,
+        state_path: str = "data/trades/risk_state.json",
+    ):
+        self.max_signals_per_cycle = int(max_signals_per_cycle)
+        self.max_daily_loss_usdt = float(max_daily_loss_usdt)
+        self.state_path = Path(state_path)
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _today(self) -> str:
+        return datetime.now(timezone.utc).date().isoformat()
+
+    def _load_state(self) -> Dict[str, Any]:
+        if not self.state_path.exists():
+            return {"date": self._today(), "realized_pnl_usdt": 0.0}
+        try:
+            return json.loads(self.state_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {"date": self._today(), "realized_pnl_usdt": 0.0}
+
+    def _save_state(self, state: Dict[str, Any]) -> None:
+        self.state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def can_signal(self) -> Tuple[bool, str]:
+        state = self._load_state()
+        if state.get("date") != self._today():
+            state = {"date": self._today(), "realized_pnl_usdt": 0.0}
+            self._save_state(state)
+        pnl = float(state.get("realized_pnl_usdt", 0.0))
+        if pnl <= -abs(self.max_daily_loss_usdt):
+            return False, "daily loss limit reached"
+        return True, "ok"
+
+    def trim_signals(self, signals: List[Signal]) -> List[Signal]:
+        return signals[: self.max_signals_per_cycle]
+
+
 def load_config(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as file:
         return json.load(file)
@@ -366,6 +451,32 @@ def run_once(config: Dict[str, Any]) -> List[Opportunity]:
     )
     opportunities = engine.find(quotes, allow_cross_fiat=bool(scanner_cfg.get("allow_cross_fiat", False)))
 
+    quote_index = {(quote.symbol, quote.source): quote for quote in quotes}
+    validator = PreTradeValidator(
+        min_quote_volume=float(scanner_cfg.get("pretrade_min_quote_volume", 0)),
+        max_spread_percent=float(scanner_cfg.get("pretrade_max_spread_percent", 30)),
+        blocked_sources=scanner_cfg.get("blocked_sources", []),
+    )
+    risk_manager = RiskManager(
+        max_signals_per_cycle=int(scanner_cfg.get("max_signals_per_cycle", 20)),
+        max_daily_loss_usdt=float(scanner_cfg.get("max_daily_loss_usdt", 100)),
+        state_path=scanner_cfg.get("risk_state_path", "data/trades/risk_state.json"),
+    )
+
+    allowed, reason = risk_manager.can_signal()
+    if not allowed:
+        logger.warning("Сигналы отключены риск-менеджером: %s", reason)
+        opportunities = []
+
+    signals: List[Signal] = []
+    for opportunity in opportunities:
+        ok, reasons = validator.validate(opportunity, quote_index)
+        signals.append(Signal(opportunity=opportunity, validation_passed=ok, validation_reasons=reasons))
+
+    signals = [signal for signal in signals if signal.validation_passed]
+    signals = risk_manager.trim_signals(signals)
+    opportunities = [signal.opportunity for signal in signals]
+
     for opportunity in opportunities[: int(scanner_cfg.get("print_top", 20))]:
         logger.info(
             "%s [%s] | buy %s %.6f -> sell %s %.6f | net=%.3f%%",
@@ -383,6 +494,7 @@ def run_once(config: Dict[str, Any]) -> List[Opportunity]:
     payload = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "quotes_count": len(quotes),
+        "validated_signals_count": len(signals),
         "opportunities": [asdict(item) for item in opportunities],
     }
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
